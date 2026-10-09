@@ -47,6 +47,8 @@ coverage.xml
 *credential*
 credentials.json
 token.json
+publish_release.py
+.secrets/
 .venv
 env/
 venv/
