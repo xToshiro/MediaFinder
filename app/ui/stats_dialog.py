@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
     QFrame, QScrollArea, QProgressBar, QGridLayout
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
 
 from app.core.database import MediaDatabase
 from app.utils.media_helpers import format_file_size
@@ -14,7 +13,7 @@ from app.utils.system_ops import open_file, reveal_in_explorer
 
 
 def format_duration_readable(seconds: int) -> str:
-    """Formata segundos em uma string amigável (ex: '38d 14h 22m' ou '2h 45m')."""
+    """Formata segundos em uma representação limpa (ex: '153d 11h' ou '4h 22m')."""
     if seconds <= 0:
         return "0 min"
     
@@ -29,18 +28,18 @@ def format_duration_readable(seconds: int) -> str:
         parts.append(f"{hours}h")
     parts.append(f"{minutes}m")
 
-    return " ".join(parts)
+    return " ".join(parts[:2]) if len(parts) > 2 else " ".join(parts)
 
 
 class StatsDialog(QDialog):
-    """Painel visual de estatísticas, métricas e distribuição da biblioteca de mídias."""
+    """Painel elegante e minimalista de estatísticas e métricas da biblioteca de mídias."""
 
     CATEGORY_COLORS = {
-        "video": "#38BDF8",     # Ciano / Azul claro
-        "audio": "#34D399",     # Verde esmeralda
-        "image": "#FBBF24",     # Âmbar / Amarelo
-        "document": "#A78BFA",  # Roxo suave
-        "other": "#94A3B8"      # Cinza ardósia
+        "video": "#38BDF8",     # Ciano
+        "audio": "#34D399",     # Esmeralda
+        "image": "#FBBF24",     # Âmbar
+        "document": "#A78BFA",  # Roxo
+        "other": "#94A3B8"      # Cinza
     }
 
     CATEGORY_NAMES = {
@@ -54,9 +53,9 @@ class StatsDialog(QDialog):
     def __init__(self, db: MediaDatabase, parent=None):
         super().__init__(parent)
         self.db = db
-        self.setWindowTitle("📊 Estatísticas da Biblioteca — MediaFinder")
-        self.resize(780, 640)
-        self.setMinimumSize(680, 520)
+        self.setWindowTitle("Estatísticas da Biblioteca — MediaFinder")
+        self.resize(760, 600)
+        self.setMinimumSize(640, 480)
         self.setModal(True)
 
         self._init_ui()
@@ -64,55 +63,90 @@ class StatsDialog(QDialog):
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(18, 18, 18, 18)
-        main_layout.setSpacing(14)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(16)
 
-        # Cabeçalho
+        # Cabeçalho Superior
         header_layout = QHBoxLayout()
         header_layout.setSpacing(10)
         
-        lbl_title = QLabel("📊 Panorama Geral da sua Biblioteca de Mídias")
-        lbl_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
+        lbl_title = QLabel("📊 Panorama Geral da Biblioteca")
+        lbl_title.setStyleSheet("font-size: 17px; font-weight: bold; color: #FFFFFF; border: none; background: transparent;")
         header_layout.addWidget(lbl_title)
         header_layout.addStretch(1)
 
         btn_refresh = QPushButton("🔄 Atualizar")
         btn_refresh.setCursor(Qt.PointingHandCursor)
+        btn_refresh.setStyleSheet("""
+            QPushButton {
+                background-color: #1E232B;
+                color: #94A3B8;
+                border: 1px solid #2D3748;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #2D3748;
+                color: #FFFFFF;
+            }
+        """)
         btn_refresh.clicked.connect(self._load_stats)
         header_layout.addWidget(btn_refresh)
 
         main_layout.addLayout(header_layout)
 
-        # Scroll Area principal
+        # Área de Rolagem com Fundo Limpo
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("background-color: transparent;")
+        scroll.setStyleSheet("""
+            QScrollArea {
+                background-color: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background-color: #0E1014;
+                width: 8px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #242A34;
+                border-radius: 4px;
+                min-height: 24px;
+            }
+        """)
 
         self.content_widget = QWidget()
+        self.content_widget.setStyleSheet("background-color: transparent;")
         self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setContentsMargins(0, 0, 8, 0)
-        self.content_layout.setSpacing(16)
+        self.content_layout.setContentsMargins(0, 0, 6, 0)
+        self.content_layout.setSpacing(18)
 
         scroll.setWidget(self.content_widget)
         main_layout.addWidget(scroll, 1)
 
-        # Botão Fechar
+        # Rodapé com Botão Fechar
         bottom_layout = QHBoxLayout()
         bottom_layout.addStretch(1)
         btn_close = QPushButton("Fechar")
         btn_close.setObjectName("primary_action_btn")
+        btn_close.setFixedSize(110, 34)
         btn_close.clicked.connect(self.accept)
         bottom_layout.addWidget(btn_close)
         main_layout.addLayout(bottom_layout)
 
     def _load_stats(self):
-        """Carrega e renderiza todas as métricas agregadas."""
-        # Limpa conteúdo anterior
+        """Renderiza cards e barras com visual limpo e sem bordas aninhadas."""
         while self.content_layout.count():
             item = self.content_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+            elif item.layout():
+                while item.layout().count():
+                    child = item.layout().takeAt(0)
+                    if child.widget():
+                        child.widget().deleteLater()
 
         stats = self.db.get_detailed_stats()
         total_files = stats.get("total_files", 0)
@@ -120,14 +154,14 @@ class StatsDialog(QDialog):
         total_duration = stats.get("total_duration", 0)
         total_drives = stats.get("total_drives", 0)
 
-        # 1. Cards KPI Superiores
+        # 1. Cards KPI Superiores (Grid 4 colunas)
         cards_grid = QGridLayout()
-        cards_grid.setSpacing(10)
+        cards_grid.setSpacing(12)
 
-        card_files = self._create_kpi_card("📁 Total de Mídias", f"{total_files:,}", "arquivos catalogados", "#38BDF8")
-        card_size = self._create_kpi_card("💾 Espaço Ocupado", format_file_size(total_size), "em todos os discos", "#34D399")
-        card_dur = self._create_kpi_card("⏱️ Tempo de Reprodução", format_duration_readable(total_duration), "conteúdo contínuo", "#FBBF24")
-        card_drives = self._create_kpi_card("💽 Volumes Monitorados", f"{total_drives} Drive(s)", "discos ativos", "#A78BFA")
+        card_files = self._build_clean_kpi_card("📁 Total de Mídias", f"{total_files:,}", "arquivos indexados")
+        card_size = self._build_clean_kpi_card("💾 Espaço em Disco", format_file_size(total_size), "volume acumulado")
+        card_dur = self._build_clean_kpi_card("⏱️ Duração Total", format_duration_readable(total_duration), "conteúdo contínuo")
+        card_drives = self._build_clean_kpi_card("💽 Volumes Monitorados", f"{total_drives} Drive(s)", "discos ativos")
 
         cards_grid.addWidget(card_files, 0, 0)
         cards_grid.addWidget(card_size, 0, 1)
@@ -136,10 +170,25 @@ class StatsDialog(QDialog):
         self.content_layout.addLayout(cards_grid)
 
         # 2. Seção: Distribuição por Categoria
-        cat_section = self._create_section_container("📂 Distribuição por Categoria")
-        cat_layout = QVBoxLayout(cat_section)
-        cat_layout.setContentsMargins(14, 14, 14, 14)
-        cat_layout.setSpacing(10)
+        lbl_cat_header = QLabel("📂 Distribuição por Categoria")
+        lbl_cat_header.setStyleSheet("font-size: 13px; font-weight: bold; color: #94A3B8; border: none; background: transparent; padding-top: 6px;")
+        self.content_layout.addWidget(lbl_cat_header)
+
+        cat_container = QFrame()
+        cat_container.setStyleSheet("""
+            QFrame {
+                background-color: #161A21;
+                border: 1px solid #232936;
+                border-radius: 8px;
+            }
+            QLabel {
+                border: none;
+                background: transparent;
+            }
+        """)
+        cat_layout = QVBoxLayout(cat_container)
+        cat_layout.setContentsMargins(16, 14, 16, 14)
+        cat_layout.setSpacing(12)
 
         categories = stats.get("categories", [])
         for cat_data in categories:
@@ -152,22 +201,37 @@ class StatsDialog(QDialog):
             color = self.CATEGORY_COLORS.get(cat_name, "#94A3B8")
             display_name = self.CATEGORY_NAMES.get(cat_name, cat_name.title())
 
-            row = self._create_progress_row(
+            row = self._build_progress_row(
                 title=display_name,
                 primary_info=f"{count:,} itens ({format_file_size(size)} — {pct_size:.1f}%)",
                 secondary_info=f"⏱️ {format_duration_readable(duration)}" if duration > 0 else "",
                 percentage=pct_size,
-                color=color
+                bar_color=color
             )
             cat_layout.addWidget(row)
 
-        self.content_layout.addWidget(cat_section)
+        self.content_layout.addWidget(cat_container)
 
         # 3. Seção: Armazenamento por Disco/Volume
-        drives_section = self._create_section_container("💽 Armazenamento por Disco")
-        drives_layout = QVBoxLayout(drives_section)
-        drives_layout.setContentsMargins(14, 14, 14, 14)
-        drives_layout.setSpacing(10)
+        lbl_drive_header = QLabel("💽 Armazenamento por Unidade de Disco")
+        lbl_drive_header.setStyleSheet("font-size: 13px; font-weight: bold; color: #94A3B8; border: none; background: transparent; padding-top: 6px;")
+        self.content_layout.addWidget(lbl_drive_header)
+
+        drive_container = QFrame()
+        drive_container.setStyleSheet("""
+            QFrame {
+                background-color: #161A21;
+                border: 1px solid #232936;
+                border-radius: 8px;
+            }
+            QLabel {
+                border: none;
+                background: transparent;
+            }
+        """)
+        drive_layout = QVBoxLayout(drive_container)
+        drive_layout.setContentsMargins(16, 14, 16, 14)
+        drive_layout.setSpacing(12)
 
         drives = stats.get("drives", [])
         for drv_data in drives:
@@ -176,86 +240,119 @@ class StatsDialog(QDialog):
             size = drv_data.get("total_size", 0)
             pct_size = (size / total_size * 100) if total_size > 0 else 0
 
-            row = self._create_progress_row(
+            row = self._build_progress_row(
                 title=f"Unidade {drive_letter}",
                 primary_info=f"{format_file_size(size)} ({count:,} arquivos)",
-                secondary_info=f"{pct_size:.1f}% do catálogo",
+                secondary_info=f"{pct_size:.1f}% do acervo",
                 percentage=pct_size,
-                color="#60A5FA"
+                bar_color="#38BDF8"
             )
-            drives_layout.addWidget(row)
+            drive_layout.addWidget(row)
 
-        self.content_layout.addWidget(drives_section)
+        self.content_layout.addWidget(drive_container)
 
         # 4. Grid Inferior: Top Extensões & Maiores Arquivos
         bottom_grid = QGridLayout()
-        bottom_grid.setSpacing(12)
+        bottom_grid.setSpacing(14)
 
         # Top Extensões
-        ext_section = self._create_section_container("🏷️ Principais Formatos")
-        ext_layout = QVBoxLayout(ext_section)
-        ext_layout.setContentsMargins(12, 12, 12, 12)
-        ext_layout.setSpacing(6)
+        ext_box = QFrame()
+        ext_box.setStyleSheet("""
+            QFrame {
+                background-color: #161A21;
+                border: 1px solid #232936;
+                border-radius: 8px;
+            }
+            QLabel {
+                border: none;
+                background: transparent;
+            }
+        """)
+        ext_layout = QVBoxLayout(ext_box)
+        ext_layout.setContentsMargins(14, 12, 14, 12)
+        ext_layout.setSpacing(8)
+
+        lbl_ext_title = QLabel("🏷️ Formatos Mais Frequentes")
+        lbl_ext_title.setStyleSheet("font-weight: bold; color: #E2E8F0; font-size: 12px; margin-bottom: 4px;")
+        ext_layout.addWidget(lbl_ext_title)
 
         top_exts = stats.get("top_extensions", [])
-        for ext_data in top_exts:
+        for ext_data in top_exts[:6]:
             ext_name = ext_data.get("extension", "")
             count = ext_data.get("count", 0)
             size = ext_data.get("total_size", 0)
 
             ext_row = QHBoxLayout()
-            lbl_ext = QLabel(ext_name.upper())
-            lbl_ext.setStyleSheet("""
-                background-color: #242A34;
+            lbl_tag = QLabel(ext_name.upper())
+            lbl_tag.setStyleSheet("""
+                background-color: #1F242D;
                 color: #38BDF8;
-                padding: 2px 6px;
+                padding: 2px 8px;
                 border-radius: 4px;
                 font-weight: bold;
                 font-size: 11px;
             """)
-            lbl_ext_info = QLabel(f"{count:,} arquivos ({format_file_size(size)})")
-            lbl_ext_info.setStyleSheet("color: #94A3B8; font-size: 11px;")
-            ext_row.addWidget(lbl_ext)
-            ext_row.addWidget(lbl_ext_info)
+            lbl_tag_info = QLabel(f"{count:,} arquivos ({format_file_size(size)})")
+            lbl_tag_info.setStyleSheet("color: #94A3B8; font-size: 11px;")
+            ext_row.addWidget(lbl_tag)
+            ext_row.addWidget(lbl_tag_info)
             ext_row.addStretch(1)
             ext_layout.addLayout(ext_row)
 
-        bottom_grid.addWidget(ext_section, 0, 0)
+        bottom_grid.addWidget(ext_box, 0, 0)
 
-        # Top 5 Maiores Arquivos
-        top_files_section = self._create_section_container("🐘 Maiores Arquivos da Biblioteca")
-        top_files_layout = QVBoxLayout(top_files_section)
-        top_files_layout.setContentsMargins(12, 12, 12, 12)
-        top_files_layout.setSpacing(8)
+        # Maiores Arquivos
+        large_box = QFrame()
+        large_box.setStyleSheet("""
+            QFrame {
+                background-color: #161A21;
+                border: 1px solid #232936;
+                border-radius: 8px;
+            }
+            QLabel {
+                border: none;
+                background: transparent;
+            }
+        """)
+        large_layout = QVBoxLayout(large_box)
+        large_layout.setContentsMargins(14, 12, 14, 12)
+        large_layout.setSpacing(6)
+
+        lbl_large_title = QLabel("🐘 Maiores Arquivos do Catálogo")
+        lbl_large_title.setStyleSheet("font-weight: bold; color: #E2E8F0; font-size: 12px; margin-bottom: 4px;")
+        large_layout.addWidget(lbl_large_title)
 
         largest_files = stats.get("largest_files", [])
-        for f in largest_files:
-            file_row = self._create_large_file_row(f)
-            top_files_layout.addWidget(file_row)
+        for f in largest_files[:4]:
+            item_widget = self._build_large_file_item(f)
+            large_layout.addWidget(item_widget)
 
-        bottom_grid.addWidget(top_files_section, 0, 1)
+        bottom_grid.addWidget(large_box, 0, 1)
         self.content_layout.addLayout(bottom_grid)
 
-    def _create_kpi_card(self, title: str, value: str, subtitle: str, accent_color: str) -> QFrame:
+    def _build_clean_kpi_card(self, title: str, value: str, subtitle: str) -> QFrame:
+        """Cria um card KPI totalmente limpo, sem caixas internas nem bordas aninhadas."""
         card = QFrame()
-        card.setStyleSheet(f"""
-            QFrame {{
+        card.setStyleSheet("""
+            QFrame {
                 background-color: #161A21;
-                border: 1px solid #242A34;
-                border-top: 3px solid {accent_color};
-                border-radius: 6px;
-                padding: 10px;
-            }}
+                border: 1px solid #232936;
+                border-radius: 8px;
+            }
+            QLabel {
+                border: none;
+                background: transparent;
+            }
         """)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(2)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(4)
 
         lbl_title = QLabel(title)
-        lbl_title.setStyleSheet("color: #94A3B8; font-size: 11px; font-weight: bold;")
+        lbl_title.setStyleSheet("color: #94A3B8; font-size: 11px; font-weight: 600;")
         
         lbl_val = QLabel(value)
-        lbl_val.setStyleSheet("color: #FFFFFF; font-size: 16px; font-weight: bold;")
+        lbl_val.setStyleSheet("color: #FFFFFF; font-size: 18px; font-weight: bold;")
 
         lbl_sub = QLabel(subtitle)
         lbl_sub.setStyleSheet("color: #64748B; font-size: 10px;")
@@ -266,26 +363,15 @@ class StatsDialog(QDialog):
 
         return card
 
-    def _create_section_container(self, title: str) -> QFrame:
-        frame = QFrame()
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #161A21;
-                border: 1px solid #242A34;
-                border-radius: 6px;
-            }
-        """)
-        return frame
-
-    def _create_progress_row(self, title: str, primary_info: str, secondary_info: str, percentage: float, color: str) -> QWidget:
+    def _build_progress_row(self, title: str, primary_info: str, secondary_info: str, percentage: float, bar_color: str) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(3)
+        layout.setSpacing(4)
 
         info_layout = QHBoxLayout()
         lbl_title = QLabel(title)
-        lbl_title.setStyleSheet("color: #FFFFFF; font-weight: bold; font-size: 12px;")
+        lbl_title.setStyleSheet("color: #F1F5F9; font-weight: 600; font-size: 12px;")
 
         lbl_primary = QLabel(primary_info)
         lbl_primary.setStyleSheet("color: #94A3B8; font-size: 11px;")
@@ -301,18 +387,18 @@ class StatsDialog(QDialog):
 
         pbar = QProgressBar()
         pbar.setRange(0, 100)
-        pbar.setValue(int(percentage))
+        pbar.setValue(max(1, int(percentage)))
         pbar.setTextVisible(False)
-        pbar.setFixedHeight(8)
+        pbar.setFixedHeight(6)
         pbar.setStyleSheet(f"""
             QProgressBar {{
                 background-color: #0E1014;
-                border-radius: 4px;
+                border-radius: 3px;
                 border: none;
             }}
             QProgressBar::chunk {{
-                background-color: {color};
-                border-radius: 4px;
+                background-color: {bar_color};
+                border-radius: 3px;
             }}
         """)
 
@@ -321,42 +407,60 @@ class StatsDialog(QDialog):
 
         return widget
 
-    def _create_large_file_row(self, file_data: Dict[str, Any]) -> QFrame:
-        row_frame = QFrame()
-        row_frame.setStyleSheet("""
-            QFrame {
-                background-color: #0E1014;
-                border-radius: 4px;
-                padding: 4px;
-            }
-        """)
-        layout = QHBoxLayout(row_frame)
-        layout.setContentsMargins(6, 4, 6, 4)
+    def _build_large_file_item(self, file_data: Dict[str, Any]) -> QWidget:
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(6)
 
         name = file_data.get("name", "")
         size_str = format_file_size(file_data.get("size", 0))
         path = file_data.get("path", "")
 
-        lbl_name = QLabel(name)
-        lbl_name.setStyleSheet("color: #E2E8F0; font-size: 11px; font-weight: 500;")
-        lbl_name.setToolTip(path)
-
         lbl_size = QLabel(size_str)
         lbl_size.setStyleSheet("color: #38BDF8; font-weight: bold; font-size: 11px;")
 
+        lbl_name = QLabel(name)
+        lbl_name.setStyleSheet("color: #CBD5E1; font-size: 11px;")
+        lbl_name.setToolTip(path)
+
         btn_play = QPushButton("▶")
         btn_play.setToolTip("Abrir no reprodutor padrão")
-        btn_play.setFixedSize(22, 22)
+        btn_play.setFixedSize(20, 20)
         btn_play.setCursor(Qt.PointingHandCursor)
-        btn_play.setStyleSheet("padding: 0px; font-size: 10px;")
+        btn_play.setStyleSheet("""
+            QPushButton {
+                background-color: #1F242D;
+                color: #FFFFFF;
+                border: 1px solid #2D3748;
+                border-radius: 4px;
+                font-size: 9px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #2563EB;
+                border-color: #3B82F6;
+            }
+        """)
         btn_play.clicked.connect(lambda: open_file(path))
 
         btn_reveal = QPushButton("📂")
         btn_reveal.setToolTip("Localizar no Explorer")
-        btn_reveal.setFixedSize(22, 22)
+        btn_reveal.setFixedSize(20, 20)
         btn_reveal.setCursor(Qt.PointingHandCursor)
-        btn_reveal.setStyleSheet("padding: 0px; font-size: 10px;")
+        btn_reveal.setStyleSheet("""
+            QPushButton {
+                background-color: #1F242D;
+                color: #FFFFFF;
+                border: 1px solid #2D3748;
+                border-radius: 4px;
+                font-size: 10px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #2D3748;
+            }
+        """)
         btn_reveal.clicked.connect(lambda: reveal_in_explorer(path))
 
         layout.addWidget(lbl_size)
@@ -364,4 +468,4 @@ class StatsDialog(QDialog):
         layout.addWidget(btn_play)
         layout.addWidget(btn_reveal)
 
-        return row_frame
+        return row
