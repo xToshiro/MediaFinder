@@ -510,6 +510,31 @@ class MainWindow(QMainWindow):
 
     def _open_tv_mode(self):
         """Abre a janela dedicada do Modo TV como tela independente (não minimiza com o buscador)."""
+        if self.worker and self.worker.isRunning():
+            stats = self.db.get_stats()
+            total_videos = stats.get("categories", {}).get("video", 0)
+
+            if total_videos == 0:
+                QMessageBox.information(
+                    self,
+                    "📺 Modo TV — Indexando Mídias",
+                    "A indexação inicial de arquivos está em andamento e seus vídeos ainda estão sendo catalogados.\n\n"
+                    "Por favor, aguarde a conclusão da varredura para sintonizar os canais de TV."
+                )
+                return
+
+            reply = QMessageBox.question(
+                self,
+                "📺 Modo TV — Indexação em Andamento",
+                "A indexação de arquivos ou o cálculo de durações ainda estão em andamento em segundo plano.\n\n"
+                "A grade de programação pode conter estimativas temporárias até que a varredura seja concluída.\n\n"
+                "Deseja abrir o Modo TV mesmo assim?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
         if self.tv_window is None or not self.tv_window.isVisible():
             self.tv_window = TVModeWindow(self.db, self.config, None)
             if hasattr(self, 'app_icon'):
