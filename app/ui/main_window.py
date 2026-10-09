@@ -20,6 +20,7 @@ from app.ui.preview_panel import PreviewPanel
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.random_dialog import RandomMediaDialog
 from app.ui.tv_mode_window import TVModeWindow
+from app.ui.stats_dialog import StatsDialog
 from app.utils.media_helpers import format_file_size
 from app.utils.system_ops import open_file
 
@@ -92,6 +93,11 @@ class MainWindow(QMainWindow):
         self.btn_tv_mode.setToolTip("Abre o Modo TV com canais automáticos, grade de 24h e player integrado (F8 / Ctrl+T)")
         self.btn_tv_mode.clicked.connect(self._open_tv_mode)
         header_layout.addWidget(self.btn_tv_mode)
+
+        self.btn_stats = QPushButton("📊 Estatísticas")
+        self.btn_stats.setToolTip("Visualizar panorama, gráficos e métricas da biblioteca (F9 / Ctrl+I)")
+        self.btn_stats.clicked.connect(self._open_stats_dialog)
+        header_layout.addWidget(self.btn_stats)
 
         self.btn_toggle_preview = QPushButton("👁️ Prévia")
         self.btn_toggle_preview.setCheckable(True)
@@ -196,6 +202,9 @@ class MainWindow(QMainWindow):
             act_random = tray_menu.addAction("🎲 Sorteio Aleatório (F4)")
             act_random.triggered.connect(self._trigger_quick_random)
 
+            act_stats = tray_menu.addAction("📊 Estatísticas da Biblioteca (F9)")
+            act_stats.triggered.connect(self._open_stats_dialog)
+
             tray_menu.addSeparator()
 
             act_settings = tray_menu.addAction("⚙️ Gerenciar Pastas & Fontes...")
@@ -239,6 +248,8 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+R"), self, activated=self._trigger_quick_random)
         QShortcut(QKeySequence("F8"), self, activated=self._open_tv_mode)
         QShortcut(QKeySequence("Ctrl+T"), self, activated=self._open_tv_mode)
+        QShortcut(QKeySequence("F9"), self, activated=self._open_stats_dialog)
+        QShortcut(QKeySequence("Ctrl+I"), self, activated=self._open_stats_dialog)
 
     def _restore_previous_state(self):
         self._update_drives_list()
@@ -393,6 +404,8 @@ class MainWindow(QMainWindow):
 
         try:
             self.worker = IndexWorker(folders=folders, db=self.db, parent=self)
+            if hasattr(self.worker, 'detailed_progress'):
+                self.worker.detailed_progress.connect(self._on_indexing_detailed_progress)
             self.worker.progress_changed.connect(self._on_indexing_progress)
             self.worker.finished.connect(self._on_indexing_finished)
             self.worker.error_occurred.connect(self._on_indexing_error)
@@ -403,8 +416,22 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'search_bar') and hasattr(self.search_bar, 'btn_reindex'):
                 self.search_bar.btn_reindex.setEnabled(True)
 
+    def _on_indexing_detailed_progress(self, stage: str, current: int, total: int, item_name: str):
+        if stage == "scan":
+            self.scan_progress_bar.setRange(0, 0)
+            self.lbl_scan_status.setText(f"📁 Varrendo: {current:,} arquivos...")
+        elif stage == "duration":
+            if total > 0:
+                self.scan_progress_bar.setRange(0, total)
+                self.scan_progress_bar.setValue(current)
+                pct = int((current / total) * 100)
+                self.lbl_scan_status.setText(f"⏱️ Duração: {current:,}/{total:,} ({pct}%)")
+            else:
+                self.scan_progress_bar.setRange(0, 0)
+                self.lbl_scan_status.setText("⏱️ Calculando durações...")
+
     def _on_indexing_progress(self, current_path: str, count: int):
-        self.lbl_scan_status.setText(f"Indexando: {count:,} arquivos...")
+        pass
 
     def _on_indexing_finished(self, total_indexed: int, elapsed: float = 0.0, stats: dict = None):
         self.scan_progress_bar.setVisible(False)
@@ -431,6 +458,11 @@ class MainWindow(QMainWindow):
 
     def _open_about(self):
         dialog = SettingsDialog(self.config, self.db, default_tab=2, parent=self)
+        dialog.exec()
+
+    def _open_stats_dialog(self):
+        """Abre o painel visual com métricas, gráficos e panorama da biblioteca."""
+        dialog = StatsDialog(self.db, self)
         dialog.exec()
 
 

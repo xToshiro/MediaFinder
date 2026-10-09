@@ -405,6 +405,12 @@ class TVModeWindow(QMainWindow):
 
     def _on_media_duration_resolved(self, file_path: str, duration_sec: int):
         """Atualiza a grade com a duração real do arquivo sem interromper a transmissão."""
+        if duration_sec > 0:
+            try:
+                self.schedule_mgr.db.update_file_duration(file_path, duration_sec)
+            except Exception:
+                pass
+
         if not self.current_playing_item or self.current_playing_item.file_path != file_path:
             return
 

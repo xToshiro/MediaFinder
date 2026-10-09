@@ -1,11 +1,12 @@
 import os
 import time
 from pathlib import Path
-from typing import List, Set, Dict, Any, Optional
+from typing import List, Set, Dict, Any, Optional, Tuple
 from PySide6.QtCore import QThread, Signal
 
 from app.core.database import MediaDatabase
 from app.utils.media_helpers import get_category_for_extension, get_drive_letter
+from app.utils.duration_extractor import extract_media_duration
 
 IGNORED_DIRS = {
     "$recycle.bin", "system volume information", ".git", ".svn",
@@ -17,9 +18,10 @@ class IndexWorker(QThread):
     """Thread em segundo plano para varredura e indexação ultra rápida de arquivos."""
 
     # Sinais para UI
-    progress_changed = Signal(str, int)     # (pasta_atual, arquivos_encontrados)
-    finished = Signal(int, float, dict)      # (total_indexado, tempo_segundos, stats)
-    error_occurred = Signal(str, str)        # (pasta, mensagem_erro)
+    progress_changed = Signal(str, int)                # (pasta_atual, arquivos_encontrados)
+    detailed_progress = Signal(str, int, int, str)     # (stage: "scan"|"duration", current, total, name)
+    finished = Signal(int, float, dict)                 # (total_indexado, tempo_segundos, stats)
+    error_occurred = Signal(str, str)                   # (pasta, mensagem_erro)
 
     # Aliases de compatibilidade para sinais
     progress = progress_changed
@@ -63,9 +65,56 @@ class IndexWorker(QThread):
             except Exception as e:
                 self.error_occurred.emit(folder, str(e))
 
+        # Enriquecimento de metadados: Extração de duração real para vídeos e áudios
+        if self._is_running:
+            try:
+                self._enrich_media_durations(total_indexed)
+            except Exception:
+                pass
+
         elapsed = time.time() - start_time
         stats = self.db.get_stats()
         self.finished.emit(total_indexed, elapsed, stats)
+
+    def _enrich_media_durations(self, total_indexed: int) -> None:
+        """Extrai a duração exata de vídeos e áudios que ainda não possuem duração no banco."""
+        batch_updates: List[Tuple[int, str]] = []
+        total_to_process = self.db.get_count_media_files_missing_duration()
+        if total_to_process <= 0:
+            return
+
+        processed_count = 0
+        
+        while self._is_running:
+            missing_items = self.db.get_media_files_missing_duration(limit=300)
+            if not missing_items:
+                break
+
+            for item in missing_items:
+                if not self._is_running:
+                    break
+
+                processed_count += 1
+                file_path = item.get("path", "")
+                file_name = item.get("name", "")
+                
+                self.detailed_progress.emit("duration", processed_count, total_to_process, file_name)
+                self.progress_changed.emit(f"Duração: {processed_count}/{total_to_process} ({file_name})", total_indexed)
+
+                dur = extract_media_duration(file_path)
+                if dur and dur > 0:
+                    batch_updates.append((dur, file_path))
+                else:
+                    # Marca como 1s para não reprocessar indefinidamente arquivos ilegíveis
+                    batch_updates.append((1, file_path))
+
+                if len(batch_updates) >= 50:
+                    self.db.update_durations_batch(batch_updates)
+                    batch_updates.clear()
+
+            if batch_updates:
+                self.db.update_durations_batch(batch_updates)
+                batch_updates.clear()
 
     def _scan_directory(self, root_folder: str) -> int:
         """Varre recursivamente o diretório usando os.scandir."""
@@ -78,6 +127,7 @@ class IndexWorker(QThread):
 
         while stack and self._is_running:
             current_dir = stack.pop()
+            self.detailed_progress.emit("scan", count, 0, current_dir)
             self.progress_changed.emit(current_dir, count)
 
             try:

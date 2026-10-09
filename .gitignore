@@ -36,8 +36,17 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
-# Environments
+# Environments & Secrets
 .env
+.env.*
+*.env
+*.key
+*.pem
+*.token
+*secret*
+*credential*
+credentials.json
+token.json
 .venv
 env/
 venv/

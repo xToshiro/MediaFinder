@@ -42,9 +42,19 @@ class MediaDatabase:
                     category TEXT NOT NULL,
                     size INTEGER NOT NULL DEFAULT 0,
                     mtime REAL NOT NULL DEFAULT 0,
-                    drive TEXT NOT NULL
+                    drive TEXT NOT NULL,
+                    duration INTEGER NOT NULL DEFAULT 0
                 );
             """)
+
+            # Migração automática: Adicionar coluna duration se a tabela já existia sem ela
+            cursor.execute("PRAGMA table_info(files);")
+            columns = [row["name"] for row in cursor.fetchall()]
+            if "duration" not in columns:
+                try:
+                    cursor.execute("ALTER TABLE files ADD COLUMN duration INTEGER NOT NULL DEFAULT 0;")
+                except Exception:
+                    pass
 
             # Índices para filtros rápidos
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_name ON files(name COLLATE NOCASE);")
@@ -53,6 +63,7 @@ class MediaDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_mtime ON files(mtime DESC);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_size ON files(size DESC);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_ext ON files(extension);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_duration ON files(duration);")
 
             # Tabela FTS5 para busca textual com suporte a prefixo
             try:
@@ -93,11 +104,16 @@ class MediaDatabase:
         if not files_data:
             return 0
 
+        # Garante campo duration padrão se omitido
+        for item in files_data:
+            if "duration" not in item:
+                item["duration"] = 0
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             query = """
-                INSERT INTO files (name, path, parent_dir, extension, category, size, mtime, drive)
-                VALUES (:name, :path, :parent_dir, :extension, :category, :size, :mtime, :drive)
+                INSERT INTO files (name, path, parent_dir, extension, category, size, mtime, drive, duration)
+                VALUES (:name, :path, :parent_dir, :extension, :category, :size, :mtime, :drive, :duration)
                 ON CONFLICT(path) DO UPDATE SET
                     name = excluded.name,
                     parent_dir = excluded.parent_dir,
@@ -105,7 +121,8 @@ class MediaDatabase:
                     category = excluded.category,
                     size = excluded.size,
                     mtime = excluded.mtime,
-                    drive = excluded.drive
+                    drive = excluded.drive,
+                    duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE files.duration END
             """
             cursor.executemany(query, files_data)
             conn.commit()
@@ -146,6 +163,46 @@ class MediaDatabase:
             conn.commit()
             return deleted_count
 
+    def update_file_duration(self, path: str, duration_sec: int) -> bool:
+        """Atualiza a duração em segundos de um arquivo individual."""
+        if not path or duration_sec <= 0:
+            return False
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE files SET duration = ? WHERE path = ?", (int(duration_sec), path))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def update_durations_batch(self, items: List[Tuple[int, str]]) -> int:
+        """Atualiza a duração em lote: lista de (duration_sec, path)."""
+        if not items:
+            return 0
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.executemany("UPDATE files SET duration = ? WHERE path = ?", items)
+            conn.commit()
+            return cursor.rowcount
+
+    def get_count_media_files_missing_duration(self) -> int:
+        """Retorna o total de arquivos de mídia pendentes de cálculo de duração."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM files WHERE category IN ('video', 'audio') AND (duration IS NULL OR duration <= 0)")
+            row = cursor.fetchone()
+            return row["count"] if row else 0
+
+    def get_media_files_missing_duration(self, limit: int = 2000) -> List[Dict[str, Any]]:
+        """Retorna arquivos de mídia (vídeo/áudio) que ainda não possuem duração extraída."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, name, path, parent_dir, extension, category, size, mtime, drive
+                FROM files
+                WHERE category IN ('video', 'audio') AND (duration IS NULL OR duration <= 0)
+                LIMIT ?
+            """, (limit,))
+            return [dict(r) for r in cursor.fetchall()]
+
     def search_files(
         self,
         query: str = "",
@@ -154,7 +211,7 @@ class MediaDatabase:
         sort_by: str = "name_asc",
         limit: int = 500,
         offset: int = 0
-    ) -> Tuple[List[Dict[str, Any]], int]:
+    ) -> Tuple[List[Dict[str, Any]], int, int]:
         """Realiza busca ultra rápida com múltiplos filtros e paginação."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -214,7 +271,7 @@ class MediaDatabase:
             total_size = count_row["total_size"]
 
             data_query = f"""
-                SELECT f.id, f.name, f.path, f.parent_dir, f.extension, f.category, f.size, f.mtime, f.drive
+                SELECT f.id, f.name, f.path, f.parent_dir, f.extension, f.category, f.size, f.mtime, f.drive, COALESCE(f.duration, 0) as duration
                 FROM files f
                 {where_sql}
                 ORDER BY {order_sql}
@@ -274,7 +331,7 @@ class MediaDatabase:
             where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
             data_query = f"""
-                SELECT f.id, f.name, f.path, f.parent_dir, f.extension, f.category, f.size, f.mtime, f.drive
+                SELECT f.id, f.name, f.path, f.parent_dir, f.extension, f.category, f.size, f.mtime, f.drive, COALESCE(f.duration, 0) as duration
                 FROM files f
                 {where_sql}
                 ORDER BY RANDOM()
@@ -328,7 +385,7 @@ class MediaDatabase:
             where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
             data_query = f"""
-                SELECT f.id, f.name, f.path, f.parent_dir, f.extension, f.category, f.size, f.mtime, f.drive
+                SELECT f.id, f.name, f.path, f.parent_dir, f.extension, f.category, f.size, f.mtime, f.drive, COALESCE(f.duration, 0) as duration
                 FROM files f
                 {where_sql}
                 ORDER BY f.parent_dir ASC, f.name ASC
@@ -355,10 +412,11 @@ class MediaDatabase:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
-            cursor.execute("SELECT COUNT(*) as total_files, COALESCE(SUM(size), 0) as total_size FROM files")
+            cursor.execute("SELECT COUNT(*) as total_files, COALESCE(SUM(size), 0) as total_size, COALESCE(SUM(duration), 0) as total_duration FROM files")
             row = cursor.fetchone()
             total_files = row["total_files"]
             total_size = row["total_size"]
+            total_duration = row["total_duration"]
 
             cursor.execute("SELECT category, COUNT(*) as count FROM files GROUP BY category")
             cat_counts = {r["category"]: r["count"] for r in cursor.fetchall()}
@@ -369,8 +427,85 @@ class MediaDatabase:
             return {
                 "total_files": total_files,
                 "total_size": total_size,
+                "total_duration": total_duration,
                 "categories": cat_counts,
                 "drives": drive_counts
+            }
+
+    def get_detailed_stats(self) -> Dict[str, Any]:
+        """Retorna dados agregados detalhados para o painel de estatísticas e gráficos."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            # 1. Totais Gerais
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_files, 
+                    COALESCE(SUM(size), 0) as total_size,
+                    COALESCE(SUM(duration), 0) as total_duration,
+                    COUNT(DISTINCT drive) as total_drives
+                FROM files
+            """)
+            summary_row = cursor.fetchone()
+
+            # 2. Estatísticas por Categoria (contagem, tamanho e duração)
+            cursor.execute("""
+                SELECT 
+                    category, 
+                    COUNT(*) as count, 
+                    COALESCE(SUM(size), 0) as total_size,
+                    COALESCE(SUM(duration), 0) as total_duration
+                FROM files 
+                GROUP BY category 
+                ORDER BY total_size DESC
+            """)
+            categories_stats = [dict(r) for r in cursor.fetchall()]
+
+            # 3. Estatísticas por Disco/Drive
+            cursor.execute("""
+                SELECT 
+                    drive, 
+                    COUNT(*) as count, 
+                    COALESCE(SUM(size), 0) as total_size
+                FROM files 
+                GROUP BY drive 
+                ORDER BY total_size DESC
+            """)
+            drives_stats = [dict(r) for r in cursor.fetchall()]
+
+            # 4. Top 8 Extensões / Formatos
+            cursor.execute("""
+                SELECT 
+                    extension, 
+                    category,
+                    COUNT(*) as count, 
+                    COALESCE(SUM(size), 0) as total_size
+                FROM files 
+                WHERE extension != ''
+                GROUP BY extension 
+                ORDER BY count DESC 
+                LIMIT 8
+            """)
+            top_extensions = [dict(r) for r in cursor.fetchall()]
+
+            # 5. Top 5 Maiores Arquivos da Biblioteca
+            cursor.execute("""
+                SELECT id, name, path, parent_dir, extension, category, size, duration, drive
+                FROM files 
+                ORDER BY size DESC 
+                LIMIT 5
+            """)
+            largest_files = [dict(r) for r in cursor.fetchall()]
+
+            return {
+                "total_files": summary_row["total_files"],
+                "total_size": summary_row["total_size"],
+                "total_duration": summary_row["total_duration"],
+                "total_drives": summary_row["total_drives"],
+                "categories": categories_stats,
+                "drives": drives_stats,
+                "top_extensions": top_extensions,
+                "largest_files": largest_files
             }
 
     def clear_database(self) -> None:

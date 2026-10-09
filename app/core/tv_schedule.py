@@ -366,7 +366,11 @@ class TVScheduleManager:
 
         while curr_time < end_of_day and total_files > 0:
             f_data = interleaved_files[file_idx % total_files]
-            dur = self._estimate_duration(f_data, is_movie=False)
+            exact_dur = f_data.get("duration", 0)
+            if exact_dur and exact_dur > 0:
+                dur = exact_dur
+            else:
+                dur = self._estimate_duration(f_data, is_movie=False)
 
             item = ScheduleItem(
                 file_data=f_data,
@@ -405,7 +409,11 @@ class TVScheduleManager:
 
         while curr_time < end_of_day and total_files > 0:
             f_data = shuffled_pool[file_idx % total_files]
-            dur = self._estimate_duration(f_data, is_movie=is_movie_ch, is_audio=is_audio_ch)
+            exact_dur = f_data.get("duration", 0)
+            if exact_dur and exact_dur > 0:
+                dur = exact_dur
+            else:
+                dur = self._estimate_duration(f_data, is_movie=is_movie_ch, is_audio=is_audio_ch)
 
             item = ScheduleItem(
                 file_data=f_data,

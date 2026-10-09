@@ -1,5 +1,9 @@
 # MediaFinder
 
+[![Versão](https://img.shields.io/badge/vers%C3%A3o-1.2.0-blue.svg)](CHANGELOG.md)
+[![Licença: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-brightgreen.svg)](https://www.python.org/)
+
 Aplicativo desktop para Windows desenvolvido em Python e Qt (PySide6) que ajuda a localizar, organizar e reproduzir arquivos de mídia (vídeos, fotos, músicas e documentos) distribuídos em diferentes pastas, discos rígidos, SSDs ou unidades montadas.
 
 ---
@@ -8,8 +12,13 @@ Aplicativo desktop para Windows desenvolvido em Python e Qt (PySide6) que ajuda 
 
 ### Busca e Indexação
 - **Busca por texto**: Consulta arquivos pelo nome utilizando banco de dados SQLite com suporte a busca textual (FTS5).
-- **Varredura em segundo plano**: A indexação das pastas ocorre sem travar a interface do programa.
+- **Varredura em segundo plano**: A indexação das pastas ocorre sem travar a interface do programa com cálculo determinístico de duração.
 - **Histórico e preferências**: Salva as últimas pastas utilizadas, termos de pesquisa e filtros selecionados.
+
+### Dashboard & Estatísticas
+- **Panorama Geral da Biblioteca**: Painel visual com cards de métricas (total de arquivos, GB/TB ocupados, tempo total contínuo de filmes/músicas e discos ativos).
+- **Gráficos Proporcionais**: Visualização de distribuição por categorias e armazenamento por volume de disco.
+- **Top Formatos e Maiores Arquivos**: Identificação dos formatos mais comuns e acesso aos arquivos mais pesados com reprodução e abertura no Explorer.
 
 ### Filtros e Agrupamentos
 - **Categorias**: Filtros rápidos para Vídeos, Imagens, Áudios e Documentos.
@@ -111,6 +120,7 @@ Filmes/
 | `Ctrl + F` / `F3` | Focar no campo de busca |
 | `F4` / `Ctrl + R` | Sorteio aleatório de mídia |
 | `F8` / `Ctrl + T` | Abrir o Modo TV |
+| `F9` / `Ctrl + I` | Abrir o painel de Estatísticas da Biblioteca |
 | `Ctrl + P` | Mostrar / ocultar painel de prévia |
 | `Ctrl + A` | Selecionar todos os arquivos da lista |
 | `Enter` | Abrir arquivo no reprodutor padrão |
