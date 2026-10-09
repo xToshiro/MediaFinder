@@ -8,10 +8,17 @@ from app.core.database import MediaDatabase
 from app.utils.media_helpers import get_category_for_extension, get_drive_letter
 
 IGNORED_DIRS = {
-    "$recycle.bin", "system volume information", ".git", ".svn",
-    "node_modules", "__pycache__", "$windows.~bt", "$windows.~ws",
-    "recovery", "msocache", "config.msi"
+    # Pastas de lixeira e sistema Windows
+    "$recycle.bin", "system volume information", "$windows.~bt", "$windows.~ws",
+    "recovery", "msocache", "config.msi",
+    # Pastas de controle de versão e compilação
+    ".git", ".svn", "node_modules", "__pycache__", ".venv", "venv",
+    # Diretórios de sistema e kernel do Linux
+    "proc", "sys", "dev", "run", "snap", "lost+found"
 }
+
+# Prefixos protegidos do Linux (sistemas de arquivos virtuais que causam loops ou I/O infinito)
+LINUX_PROTECTED_ROOTS = {"/proc", "/sys", "/dev", "/run"}
 
 class IndexWorker(QThread):
     """Thread em segundo plano para varredura e indexação ultra rápida de arquivos."""
@@ -69,6 +76,12 @@ class IndexWorker(QThread):
 
     def _scan_directory(self, root_folder: str) -> int:
         """Varre recursivamente o diretório usando os.scandir."""
+        norm_root = os.path.normpath(root_folder)
+        # Proteção contra scan acidental de sistemas de arquivos virtuais do Linux
+        if any(norm_root == p or norm_root.startswith(p + "/") for p in LINUX_PROTECTED_ROOTS):
+            self.error_occurred.emit(root_folder, "Diretório de sistema/virtual do Linux ignorado por segurança.")
+            return 0
+
         batch_records: List[Dict[str, Any]] = []
         existing_paths: Set[str] = set()
         count = 0
@@ -90,7 +103,8 @@ class IndexWorker(QThread):
                             # Ignora pastas de sistema/lixeira
                             if entry.is_dir(follow_symlinks=False):
                                 if entry.name.lower() not in IGNORED_DIRS and not entry.name.startswith("."):
-                                    stack.append(entry.path)
+                                    if not any(entry.path == p or entry.path.startswith(p + "/") for p in LINUX_PROTECTED_ROOTS):
+                                        stack.append(entry.path)
                             elif entry.is_file(follow_symlinks=False):
                                 path_str = entry.path
                                 existing_paths.add(path_str)

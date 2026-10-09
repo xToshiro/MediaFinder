@@ -1,32 +1,34 @@
 import os
+import sys
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 class AppConfig:
     """Gerencia o salvamento e carregamento de configurações e histórico do usuário."""
 
     def __init__(self):
-        # Diretório em AppData/Roaming/MediaFinder
-        appdata = os.getenv("APPDATA") or str(Path.home())
-        self.config_dir = Path(appdata) / "MediaFinder"
+        # Diretório de configuração: XDG em Linux (~/.config/MediaFinder) e AppData em Windows
+        if sys.platform == "win32":
+            base_dir = os.getenv("APPDATA") or str(Path.home())
+        else:
+            base_dir = os.getenv("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+        self.config_dir = Path(base_dir) / "MediaFinder"
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.config_file = self.config_dir / "config.json"
-        
+
         self.default_config: Dict[str, Any] = {
-            "watched_folders": [
-                r"E:\Midias",
-                r"F:\Midias",
-                r"H:\Midias"
-            ],
+            "watched_folders": [],  # Somente diretórios explicitamente indicados pelo usuário
             "media_folder_groups": {
-                "Filmes": [r"E:\Midias\Filmes", r"F:\Midias\Filmes", r"H:\Midias\Filmes"],
-                "Séries": [r"E:\Midias\Series", r"F:\Midias\Series"],
-                "Desenhos": [r"E:\Midias\Desenhos", r"F:\Midias\Desenhos"],
-                "Animes": [r"E:\Midias\Animes", r"F:\Midias\Animes"],
-                "Documentários": [r"E:\Midias\Documentarios", r"F:\Midias\Documentarios"],
-                "Músicas": [r"E:\Midias\Musicas", r"F:\Midias\Musicas", r"H:\Midias\Musicas"]
+                "Filmes": [],
+                "Séries": [],
+                "Desenhos": [],
+                "Animes": [],
+                "Documentários": [],
+                "Músicas": []
             },
+
+
             "last_search_query": "",
             "last_category_filter": "all",
             "last_drive_filter": "all",
@@ -148,6 +150,11 @@ class AppConfig:
         try:
             with open(self.config_file, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, indent=4, ensure_ascii=False)
+            if sys.platform != "win32":
+                try:
+                    os.chmod(self.config_file, 0o600)
+                except OSError:
+                    pass
         except Exception as e:
             print(f"Erro ao salvar config: {e}")
 

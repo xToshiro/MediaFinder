@@ -232,7 +232,59 @@ def run_tests():
             stats_worker = ui_db.get_stats()
             assert stats_worker["total_files"] >= 1
 
-        print("✓ Todos os componentes, diálogos, canais e IndexWorker validados com sucesso!")
+            # 4.8 Servidor de Streaming HTTP e Range Requests
+            from app.core.streamer import MediaStreamServer, TVCastManager, TVDevice
+            from app.ui.cast_dialog import CastDialog
+            import urllib.request
+
+            stream_server = MediaStreamServer(port=0)
+            port = stream_server.start()
+            assert port > 0
+            url = stream_server.register_file(sample_file)
+            assert f":{port}/stream/" in url
+
+            # Teste GET normal
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req) as resp:
+                assert resp.status == 200
+                data = resp.read()
+                assert len(data) == 1024
+
+            # Teste Range Request (Status 206 Partial Content)
+            range_req = urllib.request.Request(url, headers={"Range": "bytes=0-99"})
+            with urllib.request.urlopen(range_req) as resp:
+                assert resp.status == 206
+                assert resp.headers.get("Content-Range") == "bytes 0-99/1024"
+                assert len(resp.read()) == 100
+
+            stream_server.stop()
+
+            # 4.9 TVCastManager e CastDialog
+            cast_mgr = TVCastManager.get_instance()
+            assert cast_mgr is not None
+            cast_dialog = CastDialog(sample_file)
+            assert cast_dialog is not None
+            assert cast_dialog.list_devices is not None
+
+            # 4.10 Testes de Segurança (Validação de Executáveis e Revogação de Tokens)
+            from app.utils.system_ops import is_dangerous_file
+            assert is_dangerous_file("script.sh") is True
+            assert is_dangerous_file("app.exe") is True
+            assert is_dangerous_file("malicious.desktop") is True
+            assert is_dangerous_file("trojan.bat") is True
+            assert is_dangerous_file("filme.mp4") is False
+            assert is_dangerous_file("foto.png") is False
+
+            # Validação de revogação de tokens
+            stream_server.start()
+            s_token_url = stream_server.register_file(sample_file)
+            token_key = s_token_url.split("/")[-1]
+            assert stream_server.get_file_path(token_key) is not None
+            stream_server.clear_tokens()
+            assert stream_server.get_file_path(token_key) is None
+            stream_server.stop()
+
+        print("✓ Todos os componentes, streaming HTTP 206, diálogos, segurança e IndexWorker validados com sucesso!")
     finally:
         try:
             if os.path.exists(ui_db_path):

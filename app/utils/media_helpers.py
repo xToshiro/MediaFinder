@@ -60,9 +60,33 @@ def format_timestamp(ts: float) -> str:
         return "-"
 
 def get_drive_letter(path_str: str) -> str:
-    """Retorna a letra do drive em maiúsculo (ex: 'E:', 'F:')."""
+    """Retorna a letra da unidade (Windows, ex: 'E:') ou o rótulo do ponto de montagem (Linux)."""
     try:
-        drive, _ = os.path.splitdrive(path_str)
-        return drive.upper() if drive else ""
+        norm_p = os.path.normpath(path_str)
+        
+        # Detecção de letra de unidade estilo Windows (mesmo se executado no Linux)
+        if len(norm_p) >= 2 and norm_p[1] == ":" and norm_p[0].isalpha():
+            return norm_p[:2].upper()
+
+        drive, _ = os.path.splitdrive(norm_p)
+        if drive:
+            return drive.upper()
+
+        # Detecção de discos e partições montadas no Linux / Regata OS
+        parts = Path(norm_p).parts
+        if len(parts) >= 5 and parts[1] == "run" and parts[2] == "media":
+            # /run/media/usuario/NOME_DO_DISCO
+            return parts[4]
+        elif len(parts) >= 3 and parts[1] == "media":
+            # /media/usuario/DISCO ou /media/DISCO
+            return parts[3] if len(parts) >= 4 else parts[2]
+        elif len(parts) >= 3 and parts[1] == "mnt":
+            return parts[2]
+        elif len(parts) >= 3 and parts[1] == "home":
+            return "Home"
+        elif len(parts) >= 2:
+            return "/"
+        return ""
     except Exception:
         return ""
+

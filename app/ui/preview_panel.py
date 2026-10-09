@@ -1,7 +1,11 @@
 import os
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 from PIL import Image
+
+# Limite de segurança de descompressão de pixels para evitar DoS/OOM por imagens maliciosas
+Image.MAX_IMAGE_PIXELS = 80_000_000
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -13,8 +17,9 @@ from PySide6.QtGui import QPixmap, QImage, QClipboard
 from app.utils.system_ops import open_file, reveal_in_explorer
 from app.utils.media_helpers import format_file_size, format_timestamp
 
+
 class ImageLoaderThread(QThread):
-    """Carrega miniaturas de imagens em segundo plano."""
+    """Carrega miniaturas de imagens em segundo plano com proteções de segurança."""
     image_loaded = Signal(str, QPixmap, str) # (path, pixmap, resolution_str)
 
     def __init__(self, file_path: str, max_size: QSize, parent=None):
@@ -44,14 +49,17 @@ class ImageLoaderThread(QThread):
                 pixmap = QPixmap.fromImage(qimg)
                 
                 self.image_loaded.emit(self.file_path, pixmap, res_str)
-        except Exception as e:
-            # Fallback se falhar ao carregar via PIL
+        except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+            # Imagem excede os limites de segurança de memória
+            pass
+        except Exception:
             pass
 
 class PreviewPanel(QFrame):
     """Painel lateral de prévia de imagem, metadados e ações rápidas."""
 
     close_requested = Signal()  # Emitido quando o usuário clica no ✕ do painel
+    cast_requested = Signal(str)  # Emitido com o file_path para transmitir para TV
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -176,11 +184,20 @@ class PreviewPanel(QFrame):
         self.btn_open.clicked.connect(self._on_open_file)
         actions_layout.addWidget(self.btn_open)
 
-        self.btn_explorer = QPushButton("📂 Localizar no Explorer")
+        self.btn_cast = QPushButton("📡 Transmitir para TV...")
+        self.btn_cast.setObjectName("cast_action_btn")
+        self.btn_cast.setEnabled(False)
+        self.btn_cast.setToolTip("Transmitir este vídeo ou áudio para Smart TV (Chromecast, LG webOS, DLNA)")
+        self.btn_cast.clicked.connect(self._on_cast_file)
+        actions_layout.addWidget(self.btn_cast)
+
+        expl_btn_label = "📂 Localizar no Explorer" if sys.platform == "win32" else "📂 Localizar na Pasta"
+        self.btn_explorer = QPushButton(expl_btn_label)
         self.btn_explorer.setObjectName("explorer_action_btn")
         self.btn_explorer.setEnabled(False)
         self.btn_explorer.clicked.connect(self._on_reveal_explorer)
         actions_layout.addWidget(self.btn_explorer)
+
 
         copy_layout = QHBoxLayout()
         copy_layout.setSpacing(6)
@@ -222,6 +239,7 @@ class PreviewPanel(QFrame):
         self.lbl_path.setText(f"Caminho:\n{file_path}")
 
         self.btn_open.setEnabled(True)
+        self.btn_cast.setEnabled(cat in ("video", "audio"))
         self.btn_explorer.setEnabled(True)
         self.btn_copy_path.setEnabled(True)
         self.btn_copy_folder.setEnabled(True)
@@ -304,10 +322,16 @@ class PreviewPanel(QFrame):
         self.lbl_drive.setText("Unidade: -")
         self.lbl_path.setText("Caminho: -")
         self.btn_open.setEnabled(False)
+        self.btn_cast.setEnabled(False)
         self.btn_explorer.setEnabled(False)
         self.btn_copy_path.setEnabled(False)
         self.btn_copy_folder.setEnabled(False)
 
+    def _on_cast_file(self):
+        if self.current_file_data:
+            path = self.current_file_data.get("path", "")
+            if path:
+                self.cast_requested.emit(path)
 
     def _on_open_file(self):
         if self.current_file_data:
@@ -319,7 +343,9 @@ class PreviewPanel(QFrame):
         if self.current_file_data:
             path = self.current_file_data.get("path", "")
             if not reveal_in_explorer(path):
-                QMessageBox.warning(self, "Aviso", f"Não foi possível localizar o arquivo no Explorer:\n{path}")
+                dest_name = "no Explorer" if sys.platform == "win32" else "no gerenciador de arquivos"
+                QMessageBox.warning(self, "Aviso", f"Não foi possível localizar o arquivo {dest_name}:\n{path}")
+
 
     def _on_copy_path(self):
         if self.current_file_data:

@@ -1,8 +1,10 @@
+import sys
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QComboBox,
     QLabel, QButtonGroup, QScrollArea, QFrame, QSizePolicy
 )
 from PySide6.QtCore import Signal, Qt
+
 
 class FilterBar(QWidget):
     """Barra de filtros por tipo de mídia, unidade/origem e ordenação responsiva."""
@@ -68,9 +70,6 @@ class FilterBar(QWidget):
 
         self.combo_drive = QComboBox()
         self.combo_drive.addItem("Todas as Unidades", "all")
-        self.combo_drive.addItem(r"Drive E: (E:\Midias)", "E:")
-        self.combo_drive.addItem(r"Drive F: (F:\Midias)", "F:")
-        self.combo_drive.addItem(r"Drive H: (H:\Midias)", "H:")
         self.combo_drive.currentIndexChanged.connect(self._emit_changes)
         dropdowns_layout.addWidget(self.combo_drive)
 
@@ -111,8 +110,6 @@ class FilterBar(QWidget):
             text = f"{cat_label} ({count_str})" if count_str else cat_label
             btn.setText(text)
 
-
-
     def set_available_drives(self, drives: list[str]):
         """Atualiza a lista de unidades no combobox dinamicamente."""
         current_data = self.combo_drive.currentData()
@@ -122,8 +119,12 @@ class FilterBar(QWidget):
 
         for d in sorted(drives):
             if d:
-                label = f"Drive {d}"
+                if sys.platform == "win32" or (len(d) <= 2 and d.endswith(":")):
+                    label = f"Drive {d}"
+                else:
+                    label = f"Unidade: {d}"
                 self.combo_drive.addItem(label, d)
+
 
         # Restaura seleção anterior se possível
         idx = self.combo_drive.findData(current_data)

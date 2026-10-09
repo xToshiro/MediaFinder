@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QLabel, QPushButton, QProgressBar, QStatusBar, QMessageBox, QApplication,
-    QMenu, QSystemTrayIcon, QStyle
+    QMenu, QSystemTrayIcon, QStyle, QFrame
 )
 from PySide6.QtCore import Qt, QTimer, QSize, QPoint
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut, QAction
@@ -20,6 +20,7 @@ from app.ui.preview_panel import PreviewPanel
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.random_dialog import RandomMediaDialog
 from app.ui.tv_mode_window import TVModeWindow
+from app.ui.cast_dialog import CastDialog
 from app.utils.media_helpers import format_file_size
 from app.utils.system_ops import open_file
 
@@ -116,17 +117,48 @@ class MainWindow(QMainWindow):
         self.filter_bar.filters_changed.connect(self._on_filters_changed)
         main_layout.addWidget(self.filter_bar)
 
+        # Banner de aviso quando nenhuma pasta estiver configurada
+        self.banner_no_folders = QFrame()
+        self.banner_no_folders.setStyleSheet("""
+            QFrame {
+                background-color: #141E2F;
+                border: 1px solid #2563EB;
+                border-radius: 8px;
+                padding: 6px 12px;
+            }
+        """)
+        banner_layout = QHBoxLayout(self.banner_no_folders)
+        banner_layout.setContentsMargins(8, 4, 8, 4)
+        lbl_banner_icon = QLabel("📁")
+        lbl_banner_icon.setStyleSheet("font-size: 16px;")
+        banner_layout.addWidget(lbl_banner_icon)
+
+        lbl_banner_text = QLabel("Nenhuma pasta configurada. O MediaFinder indexará exclusivamente os diretórios que você indicar.")
+        lbl_banner_text.setStyleSheet("color: #E2E8F0; font-size: 12px; font-weight: 500;")
+        banner_layout.addWidget(lbl_banner_text, 1)
+
+        btn_banner_add = QPushButton("➕ Selecionar Pastas...")
+        btn_banner_add.setObjectName("primary_action_btn")
+        btn_banner_add.setStyleSheet("padding: 5px 12px; font-size: 12px;")
+        btn_banner_add.clicked.connect(self._open_settings)
+        banner_layout.addWidget(btn_banner_add)
+
+        main_layout.addWidget(self.banner_no_folders)
+
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.setHandleWidth(6)
+
         self.splitter.setChildrenCollapsible(True)
 
         self.results_table = ResultsTableView()
         self.results_table.item_selected.connect(self._on_item_selected)
         self.results_table.delete_requested.connect(self._on_delete_files_requested)
+        self.results_table.cast_requested.connect(self._open_cast_dialog)
         self.splitter.addWidget(self.results_table)
 
         self.preview_panel = PreviewPanel()
         self.preview_panel.close_requested.connect(lambda: self._toggle_preview_panel(False))
+        self.preview_panel.cast_requested.connect(self._open_cast_dialog)
         self.splitter.addWidget(self.preview_panel)
 
         self.splitter.setCollapsible(0, False)
@@ -241,11 +273,16 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+T"), self, activated=self._open_tv_mode)
 
     def _restore_previous_state(self):
+        self._update_folders_state()
         self._update_drives_list()
         self.filter_bar.set_category(self._current_category)
         self.filter_bar.set_drive(self._current_drive)
         self.search_bar.set_text(self._current_query)
         self.perform_search()
+
+    def _update_folders_state(self):
+        folders = self.config.get_watched_folders()
+        self.banner_no_folders.setVisible(len(folders) == 0)
 
     def _update_drives_list(self):
         stats = self.db.get_stats()
@@ -274,6 +311,13 @@ class MainWindow(QMainWindow):
         self.config.set("preview_visible", visible)
 
     def perform_search(self):
+        folders = self.config.get_watched_folders()
+        if not folders:
+            self.results_table.set_results([])
+            self.lbl_status_results.setText("Nenhuma pasta configurada. Clique em '➕ Selecionar Pastas...' para começar.")
+            self.preview_panel.set_file_data(None)
+            return
+
         files, total_count, total_size = self.db.search_files(
             query=self._current_query,
             category=self._current_category,
@@ -296,11 +340,12 @@ class MainWindow(QMainWindow):
         if not files:
             self.preview_panel.set_file_data(None)
 
+
     def _on_item_selected(self, file_data: dict):
         self.preview_panel.set_file_data(file_data)
 
     def _on_delete_files_requested(self, files: List[Dict[str, Any]]):
-        """Solicita confirmação e apaga permanentemente os arquivos selecionados do disco e do banco."""
+        """Solicita confirmação e move com segurança os arquivos selecionados para a Lixeira do SO."""
         if not files:
             return
 
@@ -311,11 +356,11 @@ class MainWindow(QMainWindow):
         if count == 1:
             f = files[0]
             msg = (
-                f"Tem certeza de que deseja EXCLUIR permanentemente do disco o arquivo:\n\n"
+                f"Deseja mover para a Lixeira do sistema o arquivo:\n\n"
                 f"📄 {f.get('name', '')}\n"
                 f"📁 Local: {f.get('path', '')}\n"
                 f"💾 Tamanho: {size_str}\n\n"
-                f"⚠️ ATENÇÃO: O arquivo será apagado fisicamente da pasta e não poderá ser recuperado!"
+                f"O arquivo poderá ser recuperado posteriormente na Lixeira caso necessário."
             )
         else:
             sample_names = "\n".join(f"• {f.get('name', '')}" for f in files[:5])
@@ -323,15 +368,15 @@ class MainWindow(QMainWindow):
                 sample_names += f"\n• ... e mais {count - 5} arquivo(s)"
 
             msg = (
-                f"Tem certeza de que deseja EXCLUIR permanentemente do disco os {count} arquivos selecionados?\n\n"
-                f"💾 Espaço total a ser liberado: {size_str}\n\n"
-                f"Arquivos a serem apagados:\n{sample_names}\n\n"
-                f"⚠️ ATENÇÃO: Os arquivos serão apagados fisicamente das pastas dos seus discos/unidades!"
+                f"Deseja mover para a Lixeira do sistema os {count} arquivos selecionados?\n\n"
+                f"💾 Espaço total: {size_str}\n\n"
+                f"Arquivos selecionados:\n{sample_names}\n\n"
+                f"Os arquivos poderão ser recuperados na Lixeira do sistema operacional."
             )
 
-        reply = QMessageBox.warning(
+        reply = QMessageBox.question(
             self,
-            "⚠️ Confirmar Exclusão Definitiva",
+            "🗑️ Confirmar Mover para Lixeira",
             msg,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
@@ -349,11 +394,18 @@ class MainWindow(QMainWindow):
                 continue
             try:
                 if os.path.exists(path):
-                    if os.path.isdir(path):
-                        import shutil
-                        shutil.rmtree(path)
-                    else:
-                        os.remove(path)
+                    try:
+                        import send2trash
+                        send2trash.send2trash(path)
+                    except Exception:
+                        # Fallback se o sistema de arquivos não suportar lixeira (ex: FAT/exFAT/NFS)
+                        if os.path.islink(path):
+                            os.unlink(path)
+                        elif os.path.isdir(path):
+                            import shutil
+                            shutil.rmtree(path)
+                        else:
+                            os.remove(path)
                 deleted_paths.append(path)
             except Exception as e:
                 failed_files.append((f.get("name", ""), str(e)))
@@ -361,7 +413,7 @@ class MainWindow(QMainWindow):
         # Remove do banco de dados
         if deleted_paths:
             self.db.delete_files_by_paths(deleted_paths)
-            self.lbl_status_results.setText(f"🗑️ {len(deleted_paths)} arquivo(s) excluído(s) do disco com sucesso ({size_str} liberados).")
+            self.lbl_status_results.setText(f"🗑️ {len(deleted_paths)} arquivo(s) movido(s) para a Lixeira com sucesso ({size_str} liberados).")
             self._update_drives_list()
             self.perform_search()
 
@@ -379,9 +431,11 @@ class MainWindow(QMainWindow):
             return
 
         folders = self.config.get_watched_folders()
+        self._update_folders_state()
         if not folders:
             self.scan_progress_bar.setVisible(False)
             self.lbl_scan_status.setText("")
+            self.lbl_status_results.setText("Nenhuma pasta configurada. Clique em '⚙️ Pastas' para indicar seus diretórios.")
             return
 
         self.scan_progress_bar.setVisible(True)
@@ -414,6 +468,7 @@ class MainWindow(QMainWindow):
             f"Varredura concluída: {total_indexed:,} arquivos processados em {elapsed:.1f}s (Total no catálogo: {total_files:,} mídias)."
         )
         self._update_drives_list()
+        self._update_folders_state()
         self.perform_search()
 
         if hasattr(self, 'search_bar') and hasattr(self.search_bar, 'btn_reindex'):
@@ -426,8 +481,11 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self.config, self.db, default_tab=0, parent=self)
         if dialog.exec():
             self._update_drives_list()
+            self._update_folders_state()
             self.perform_search()
-            self.start_indexing()
+            if self.config.get_watched_folders():
+                self.start_indexing()
+
 
     def _open_about(self):
         dialog = SettingsDialog(self.config, self.db, default_tab=2, parent=self)
@@ -487,6 +545,16 @@ class MainWindow(QMainWindow):
             self.tv_window.setWindowState(self.tv_window.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
             self.tv_window.raise_()
             self.tv_window.activateWindow()
+
+    def _open_cast_dialog(self, file_path: str):
+        """Abre o diálogo de transmissão para TV para o arquivo indicado."""
+        if not file_path or not os.path.exists(file_path):
+            QMessageBox.warning(self, "Aviso", f"Arquivo não encontrado ou inacessível:\n{file_path}")
+            return
+        self.cast_dialog = CastDialog(file_path, parent=self)
+        if hasattr(self, 'app_icon'):
+            self.cast_dialog.setWindowIcon(self.app_icon)
+        self.cast_dialog.show()
 
     def closeEvent(self, event):
         """Salva dimensões e estado ao fechar."""

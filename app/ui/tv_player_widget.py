@@ -1,6 +1,8 @@
 import os
+import sys
 import re
 from typing import Optional, List, Dict, Any
+
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -186,11 +188,14 @@ class TVPlayerWidget(QWidget):
 
         btns_layout.addStretch()
 
-        self.btn_external_player = QPushButton("🚀 Abrir no Windows Player")
+        ext_label = "🚀 Abrir no Windows Player" if sys.platform == "win32" else "🚀 Abrir no Reprodutor Padrão"
+        self.btn_external_player = QPushButton(ext_label)
         self.btn_external_player.setStyleSheet("padding: 5px 10px; font-size: 11px;")
-        self.btn_external_player.setToolTip("Abre o arquivo atual no player padrão do Windows (VLC, etc.)")
+        ext_tip = "Abre o arquivo atual no player padrão do Windows (VLC, etc.)" if sys.platform == "win32" else "Abre o arquivo atual no player de vídeo padrão do Linux (VLC, Haruna, etc.)"
+        self.btn_external_player.setToolTip(ext_tip)
         self.btn_external_player.clicked.connect(self._open_in_external_player)
         btns_layout.addWidget(self.btn_external_player)
+
 
         self.btn_fullscreen = QPushButton("⛶ Tela Cheia")
         self.btn_fullscreen.setStyleSheet("padding: 5px 10px; font-size: 11px;")

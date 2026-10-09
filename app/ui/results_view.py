@@ -1,5 +1,7 @@
 import os
+import sys
 from typing import List, Dict, Any, Optional
+
 from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QMenu,
     QAbstractItemView, QApplication, QMessageBox
@@ -24,6 +26,7 @@ class ResultsTableView(QTableWidget):
     item_selected = Signal(dict)       # Emitido ao selecionar uma linha (para o preview)
     file_activated = Signal(dict)      # Emitido ao dar duplo clique ou Enter
     delete_requested = Signal(list)    # Emitido ao solicitar exclusão de um ou mais arquivos selecionados
+    cast_requested = Signal(str)       # Emitido com o path para transmitir para TV
 
     COLUMNS = [
         ("Tipo", 44),
@@ -201,7 +204,12 @@ class ResultsTableView(QTableWidget):
             act_open = menu.addAction("🚀 Abrir Arquivo")
             act_open.triggered.connect(lambda: open_file(f.get("path", "")))
 
-            act_explorer = menu.addAction("📂 Localizar no Windows Explorer")
+            if f.get("category") in ("video", "audio"):
+                act_cast = menu.addAction("📡 Transmitir para TV...")
+                act_cast.triggered.connect(lambda: self.cast_requested.emit(f.get("path", "")))
+
+            expl_label = "📂 Localizar no Windows Explorer" if sys.platform == "win32" else "📂 Localizar no Gerenciador de Arquivos"
+            act_explorer = menu.addAction(expl_label)
             act_explorer.triggered.connect(lambda: reveal_in_explorer(f.get("path", "")))
 
             menu.addSeparator()
@@ -217,14 +225,16 @@ class ResultsTableView(QTableWidget):
 
             menu.addSeparator()
 
-            act_del = menu.addAction("🗑️ Excluir do Disco... (Delete)")
+            act_del = menu.addAction("🗑️ Mover para a Lixeira... (Delete)")
             act_del.triggered.connect(lambda: self.delete_requested.emit(selected_files))
         else:
             act_open_all = menu.addAction(f"🚀 Abrir Selecionados ({count} arquivos)")
             act_open_all.triggered.connect(lambda: [open_file(sf.get("path", "")) for sf in selected_files])
 
-            act_explorer_first = menu.addAction("📂 Localizar 1º no Explorer")
+            expl_first_label = "📂 Localizar 1º no Explorer" if sys.platform == "win32" else "📂 Localizar 1º no Gerenciador"
+            act_explorer_first = menu.addAction(expl_first_label)
             act_explorer_first.triggered.connect(lambda: reveal_in_explorer(selected_files[0].get("path", "")))
+
 
             menu.addSeparator()
 
@@ -234,7 +244,7 @@ class ResultsTableView(QTableWidget):
 
             menu.addSeparator()
 
-            act_del = menu.addAction(f"🗑️ Excluir {count} Arquivos do Disco... (Delete)")
+            act_del = menu.addAction(f"🗑️ Mover {count} Arquivos para a Lixeira... (Delete)")
             act_del.triggered.connect(lambda: self.delete_requested.emit(selected_files))
 
         menu.exec(self.viewport().mapToGlobal(pos))

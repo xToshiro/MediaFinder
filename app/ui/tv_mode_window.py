@@ -108,6 +108,13 @@ class TVModeWindow(QMainWindow):
         self.btn_ch_next.clicked.connect(self._next_channel)
         top_layout.addWidget(self.btn_ch_next)
 
+        # Botão Transmitir para TV
+        self.btn_cast_tv = QPushButton("📡 Transmitir TV")
+        self.btn_cast_tv.setStyleSheet("padding: 5px 12px; font-size: 11px; background-color: #1D4ED8; color: #FFFFFF; font-weight: bold; border-radius: 4px;")
+        self.btn_cast_tv.setToolTip("Transmitir este canal ao vivo para Smart TV (Chromecast, LG webOS, DLNA)")
+        self.btn_cast_tv.clicked.connect(self._open_cast_dialog)
+        top_layout.addWidget(self.btn_cast_tv)
+
         # Botão Fechar TV
         self.btn_exit_tv = QPushButton("✕ Sair do Modo TV")
         self.btn_exit_tv.clicked.connect(self.close)
@@ -617,6 +624,16 @@ class TVModeWindow(QMainWindow):
                 channel = self.schedule_mgr.channels[self.current_channel_idx]
                 self._tune_current_program(channel)
                 self._populate_schedule_list(channel)
+
+    def _open_cast_dialog(self):
+        """Abre o diálogo de transmissão para TV com o item atualmente no ar."""
+        cur_path = self.player_widget.current_file_path
+        if not cur_path or not os.path.exists(cur_path):
+            QMessageBox.information(self, "Transmitir TV", "Nenhuma mídia em reprodução no momento para transmitir.")
+            return
+        from app.ui.cast_dialog import CastDialog
+        self.cast_dialog = CastDialog(cur_path, parent=self)
+        self.cast_dialog.show()
 
     def closeEvent(self, event):
         self.clock_timer.stop()

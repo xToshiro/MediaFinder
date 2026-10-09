@@ -13,37 +13,41 @@ if hasattr(sys.stdout, "reconfigure"):
 
 
 def build():
+    is_windows = sys.platform == "win32"
+    platform_name = "Windows (.exe)" if is_windows else "Linux"
     print("=" * 60)
-    print("🚀 Iniciando compilação do MediaFinder para Windows (.exe)...")
+    print(f"🚀 Iniciando compilação do MediaFinder para {platform_name}...")
     print("=" * 60)
 
-    # Comando PyInstaller com ícone personalizado
+    sep = ";" if is_windows else ":"
+    icon_file = "assets/icon.ico" if is_windows else "assets/icon.png"
+
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name=MediaFinder",
-        "--noconsole",          # Sem janela preta de terminal
-        "--onefile",            # Gera um único arquivo .exe independente
-        "--noconfirm",          # Sobrescreve sem perguntar
-        "--icon=assets/icon.ico", # Ícone personalizado do executável
-        "--add-data=assets;assets",
+        "--noconsole",
+        "--onefile",
+        "--noconfirm",
+        f"--icon={icon_file}",
+        f"--add-data=assets{sep}assets",
         "--collect-all=PySide6",
         "--collect-all=PIL",
         "main.py"
     ]
 
-
-
     print(f"Executando comando: {' '.join(cmd)}\n")
     result = subprocess.run(cmd)
 
     if result.returncode == 0:
-        exe_path = os.path.abspath(os.path.join("dist", "MediaFinder.exe"))
+        binary_name = "MediaFinder.exe" if is_windows else "MediaFinder"
+        exe_path = os.path.abspath(os.path.join("dist", binary_name))
         print("\n" + "=" * 60)
         print("🎉 COMPILAÇÃO CONCLUÍDA COM SUCESSO!")
-        print(f"📁 O executável foi gerado em: {exe_path}")
+        print(f"📁 O binário foi gerado em: {exe_path}")
         print("=" * 60)
     else:
         print("\n❌ Ocorreu um erro durante a compilação.")
+
 
 if __name__ == "__main__":
     build()

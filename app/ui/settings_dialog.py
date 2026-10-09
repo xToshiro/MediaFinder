@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Optional
 
 from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QListWidget, QFileDialog, QMessageBox, QGroupBox, QTabWidget,
+    QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QGroupBox, QTabWidget,
     QInputDialog, QSplitter, QFrame, QScrollArea
 )
 from PySide6.QtCore import Signal, Qt, QUrl
@@ -24,7 +24,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = config
         self.db = db
-        self.setWindowTitle("Configurações & Sobre — MediaFinder")
+        self.setWindowTitle("Configurações & Pastas — MediaFinder")
         self.resize(760, 560)
         self.setMinimumSize(660, 480)
         self.setModal(True)
@@ -67,7 +67,7 @@ class SettingsDialog(QDialog):
         """)
 
         tab_global = self._build_global_folders_tab()
-        self.tabs.addTab(tab_global, "📁 Pastas & Unidades Monitoradas")
+        self.tabs.addTab(tab_global, "📁 Pastas Monitoradas")
 
         tab_groups = self._build_folder_groups_tab()
         self.tabs.addTab(tab_groups, "🏷️ Grupos de Mídia & Categorias")
@@ -80,7 +80,7 @@ class SettingsDialog(QDialog):
         bottom_layout = QHBoxLayout()
         bottom_layout.setSpacing(8)
 
-        self.btn_reindex = QPushButton("🔄 Reindexar Tudo Agora")
+        self.btn_reindex = QPushButton("🔄 Reindexar Selecionadas")
         self.btn_reindex.setObjectName("primary_action_btn")
         self.btn_reindex.clicked.connect(self._on_reindex_clicked)
         bottom_layout.addWidget(self.btn_reindex)
@@ -104,8 +104,9 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
-        lbl_desc = QLabel("Selecione os diretórios, unidades ou pontos de montagem que o MediaFinder deve varrer e indexar:")
-        lbl_desc.setStyleSheet("color: #94A3B8; font-size: 11px;")
+        lbl_desc = QLabel("Indique exclusivamente as pastas que você deseja que o MediaFinder indexe.\nNenhum outro diretório do computador será lido ou catalogado.")
+        lbl_desc.setStyleSheet("color: #38BDF8; font-size: 12px; font-weight: 500;")
+        lbl_desc.setWordWrap(True)
         layout.addWidget(lbl_desc)
 
         self.list_folders = QListWidget()
@@ -118,14 +119,15 @@ class SettingsDialog(QDialog):
                 padding: 4px;
             }
             QListWidget::item {
-                padding: 6px;
+                padding: 8px 6px;
                 border-bottom: 1px solid #15181E;
             }
         """)
         layout.addWidget(self.list_folders, 1)
 
         btn_layout = QHBoxLayout()
-        self.btn_add_watched = QPushButton("➕ Adicionar Pasta / Unidade...")
+        self.btn_add_watched = QPushButton("➕ Adicionar Pasta...")
+        self.btn_add_watched.setObjectName("primary_action_btn")
         self.btn_add_watched.clicked.connect(self._add_watched_folder)
         btn_layout.addWidget(self.btn_add_watched)
 
@@ -133,8 +135,13 @@ class SettingsDialog(QDialog):
         self.btn_remove_watched.clicked.connect(self._remove_watched_folder)
         btn_layout.addWidget(self.btn_remove_watched)
 
+        self.btn_clear_all_watched = QPushButton("🗑️ Limpar Todas as Pastas")
+        self.btn_clear_all_watched.clicked.connect(self._clear_all_watched_folders)
+        btn_layout.addWidget(self.btn_clear_all_watched)
+
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
+
 
         group_stats = QGroupBox("📊 Estatísticas da Base de Dados")
         group_stats.setStyleSheet("""
@@ -383,8 +390,21 @@ class SettingsDialog(QDialog):
         # 1. Pastas monitoradas
         self.list_folders.clear()
         folders = self.config.get_watched_folders()
-        for f in folders:
-            self.list_folders.addItem(f)
+        if not folders:
+            placeholder = QListWidgetItem("Nenhuma pasta configurada. Clique em '➕ Adicionar Pasta...' abaixo.")
+            placeholder.setForeground(Qt.gray)
+            self.list_folders.addItem(placeholder)
+        else:
+            for f in folders:
+                exists = os.path.exists(f)
+                prefix = "📁 " if exists else "⚠️ "
+                suffix = "" if exists else " (não acessível / desconectado)"
+                item = QListWidgetItem(f"{prefix}{f}{suffix}")
+                item.setData(Qt.UserRole, f)
+                if not exists:
+                    item.setForeground(Qt.yellow)
+                self.list_folders.addItem(item)
+
 
         # 2. Grupos de pastas
         self.groups_data = dict(self.config.get_folder_groups())
@@ -491,7 +511,7 @@ class SettingsDialog(QDialog):
             self.list_group_folders.takeItem(row)
 
     def _add_watched_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Selecionar Pasta ou Drive para Monitorar")
+        folder = QFileDialog.getExistingDirectory(self, "Selecionar Pasta para Indexar")
         if folder:
             norm = os.path.normpath(folder)
             folders = self.config.get_watched_folders()
@@ -504,13 +524,36 @@ class SettingsDialog(QDialog):
         current_item = self.list_folders.currentItem()
         if not current_item:
             return
-        
-        folder = current_item.text()
+
+        folder = current_item.data(Qt.UserRole)
+        if not folder:
+            return
+
         folders = self.config.get_watched_folders()
         if folder in folders:
             folders.remove(folder)
             self.config.set_watched_folders(folders)
+            # Remove arquivos dessa pasta do banco de dados imediatamente
+            self.db.remove_folder_records(folder)
             self._load_data()
+
+    def _clear_all_watched_folders(self):
+        folders = self.config.get_watched_folders()
+        if not folders:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Limpar Todas as Pastas",
+            "Deseja remover todas as pastas da lista e limpar os registros correspondentes do catálogo?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.config.set_watched_folders([])
+            self.db.clear_database()
+            self._load_data()
+
 
     def _on_reindex_clicked(self):
         self._on_save_and_close()

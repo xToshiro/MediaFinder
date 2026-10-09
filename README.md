@@ -135,14 +135,37 @@ Filmes/
 
 ## Instalação e Execução
 
-### Executável (Windows)
-Baixe o arquivo `MediaFinder.exe` na aba de [Releases](https://github.com/xToshiro/MediaFinder/releases). Não é necessário instalar Python nem configurar dependências.
-
-### A partir do Código-Fonte
+### No Linux (Regata OS / openSUSE / Ubuntu / Debian / Fedora)
 
 1. Clone o repositório:
 ```bash
-git clone https://github.com/xToshiro/MediaFinder.git
+git clone https://github.com/marquimRcc/MediaFinder.git
+cd MediaFinder
+```
+
+2. Crie o ambiente virtual e instale as dependências:
+```bash
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+```
+
+3. Crie os atalhos no sistema (Menu de Aplicativos e Área de Trabalho):
+```bash
+./.venv/bin/python create_desktop_shortcut.py
+```
+
+4. Execute diretamente:
+```bash
+./iniciar.sh
+```
+
+---
+
+### No Windows
+
+1. Clone o repositório:
+```bash
+git clone https://github.com/marquimRcc/MediaFinder.git
 cd MediaFinder
 ```
 
@@ -153,16 +176,19 @@ pip install -r requirements.txt
 
 3. Execute:
 ```bash
-python main.py
+iniciar.bat
+# ou python main.py
 ```
 
-### Gerar o Executável
+### Gerar Executável / Binário Portátil (PyInstaller)
 
-Para compilar o `.exe` localmente:
+Para compilar o binário localmente (Windows ou Linux):
 ```bash
 python build_exe.py
 ```
-O arquivo será criado na pasta `dist/MediaFinder.exe`.
+- No Windows: gera `dist/MediaFinder.exe`.
+- No Linux: gera `dist/MediaFinder`.
+
 
 ---
 

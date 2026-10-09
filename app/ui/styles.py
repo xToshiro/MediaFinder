@@ -115,6 +115,24 @@ QPushButton#explorer_action_btn:hover {
     color: #FFFFFF;
 }
 
+/* Botão Transmitir para TV */
+QPushButton#cast_action_btn {
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #2563EB);
+    color: #FFFFFF;
+    border: 1px solid #3B82F6;
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-size: 13px;
+    font-weight: 600;
+}
+QPushButton#cast_action_btn:hover {
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1D4ED8, stop:1 #3B82F6);
+    border-color: #60A5FA;
+}
+QPushButton#cast_action_btn:pressed {
+    background-color: #172554;
+}
+
 /* Chips / Botões de Filtro */
 QPushButton.filter_chip {
     background-color: #1A1F26;
